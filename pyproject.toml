@@ -1,0 +1,21 @@
+[project]
+name = "mujoco-elirobots"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "beartype>=0.22.9",
+    "mujoco>=3.9.0",
+    "mujoco-mjx>=3.9.0",
+    "pybind11-stubgen>=2.5.5",
+    "typeguard>=4.5.2",
+]
+
+[tool.uv]
+exclude-dependencies = ["torch"]
+config-settings = { editable_mode = "compat" }
+
+[tool.pyright]
+stubPath = "typings"
+reportUnknownMemberType = false
