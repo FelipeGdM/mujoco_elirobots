@@ -1,9 +1,9 @@
 <mujoco model="robot_in_world">
-  <compiler angle="degree" balanceinertia="true" meshdir="assets/ec63/meshes"/>
+  <compiler angle="radian" balanceinertia="true" meshdir="assets/ec63/meshes"/>
   <visual>
     <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3"/>
   </visual>
   <worldbody>
-    <geom name="floor" type="plane" size="5 5 0.1" rgba="0.3 0.4 0.3 1"/>
+    <geom name="floor" type="plane" size="5 5 0.1" rgba="0.3 0.4 0.3 1" friction="0.0 0.0 0.0" condim="1"/>
   </worldbody>
 </mujoco>
