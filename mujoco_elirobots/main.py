@@ -1,8 +1,9 @@
 import mujoco
 import mujoco.viewer
+from mujoco._structs import MjModel
 from typeguard import check_type
 
-from mujoco_elirobots.builder.model import build_model
+from mujoco_elirobots.builder.model import build_world
 
 SCENE_FILENAME = "mujoco_elirobots/scene.xml"
 ROBOT_FILENAME = "mujoco_elirobots/assets/ec63/ec63_description.urdf"
@@ -18,7 +19,7 @@ sensordata = []
 
 def main():
 
-    model = build_model(SCENE_FILENAME, ROBOT_FILENAME)
+    model: MjModel = build_world(SCENE_FILENAME, ROBOT_FILENAME)
 
     model.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICIT
 
