@@ -1,5 +1,5 @@
 [project]
-name = "mujoco-elirobots"
+name = "mujoco_elirobots"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -12,6 +12,9 @@ dependencies = [
     "typeguard>=4.5.2",
 ]
 
+[project.scripts]
+scene = "mujoco_elirobots.main:main"
+
 [tool.uv]
 exclude-dependencies = ["torch"]
 config-settings = { editable_mode = "compat" }
@@ -19,3 +22,6 @@ config-settings = { editable_mode = "compat" }
 [tool.pyright]
 stubPath = "typings"
 reportUnknownMemberType = false
+
+[tool.setuptools.packages.find]
+exclude = ["typings*"]
