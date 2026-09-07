@@ -51,9 +51,9 @@ from mujoco_elirobots.playground.flip_coin_ec.config import FlipCoinConfig
 from mujoco_elirobots.playground.flip_coin_ec.scene_builder import build_task
 
 _XML_PATH = pathlib.Path(__file__).parent / "xmls" / "flip_coin_ec.xml"
-_EC63_MESHES_DIR = ASSETS_PATH / "ec63" / "meshes"
+_EC63_MESHES_DIR = ASSETS_PATH / "ec63_simplified" / "meshes"
 
-_ROBOT_XML_PATH = ASSETS_PATH / "ec63" / "ec63_description.urdf"
+_ROBOT_XML_PATH = ASSETS_PATH / "ec63_simplified" / "ec63_simplified.urdf"
 
 _COIN_NORMAL_AXIS = jnp.array([1.0, 0.0, 0.0])
 _COIN_DESIRED_AXIS = jnp.array([0.0, 0.0, 1.0])
@@ -89,6 +89,7 @@ class FlipCoinEnv(mjx_env.MjxEnv):
         # fully implicit integrator cannot be used here. Arm joint damping keeps
         # the stiff position-controlled arm stable under semi-implicit integration.
         mj_model.opt.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+        # mj_model.opt.integrator = mujoco.mjtIntegrator.mjINT_RK4
         arm_dofs = [
             mj_model.jnt_dofadr[mj_model.joint(f"robot_joint{i}").id]
             for i in range(1, 7)
@@ -406,7 +407,7 @@ if __name__ == "__main__":
     )
     # while not state.done and len(trajectory) < env.config.episode_length:
     # for _ in trange(env.config.episode_length):
-    for _ in trange(10):
+    for _ in trange(50):
         rng, rng_action = jax.random.split(rng)
         # action = jax.random.uniform(
         #     rng_action, (env.action_size,), minval=-1.0, maxval=1.0

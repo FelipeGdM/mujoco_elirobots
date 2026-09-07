@@ -9,8 +9,8 @@ from typeguard import check_type, typechecked
 
 @dataclass
 class MotorArgs:
-    kp: float = 400.0
-    kv: float = 80.0
+    kp: float = 400e-3
+    kv: float = 0.0
 
 
 @dataclass

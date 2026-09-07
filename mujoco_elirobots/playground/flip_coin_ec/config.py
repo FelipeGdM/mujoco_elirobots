@@ -57,8 +57,8 @@ class FlipCoinRewardConfig:
 
 @dataclass(frozen=True)
 class FlipCoinConfig:
-    ctrl_dt: float = 0.02
-    sim_dt: float = 0.005
+    ctrl_dt: float = 50e-3
+    sim_dt: float = 1e-3
     episode_length: int = 50
     action_repeat: int = 1
     action_scale: float = 0.1
