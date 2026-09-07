@@ -1,4 +1,5 @@
-FROM rocm/pytorch:rocm7.1.1_ubuntu24.04_py3.12_pytorch_release_2.10.0
+# FROM rocm/jax:rocm7.14.1-jax0.10.0-py3.14
+FROM rocm/jax:rocm10.0-jax0.11.0-py3.14
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_LINK_MODE=symlink
@@ -43,11 +44,11 @@ RUN pip config set global.break-system-packages true
 
 RUN pip install uv 
 
+# Update jax version as 0.11.0 doesn't work
+RUN pip install -U jaxlib jax
+
 ADD pyproject.toml .
 
 ADD uv.lock .
 
 RUN uv sync --no-install-project --inexact
-
-# download physx GPU binary via sapien
-RUN python3 -c "exec('import sapien.physx as physx;\ntry:\n  physx.enable_gpu()\nexcept:\n  pass;')"
