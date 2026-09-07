@@ -28,59 +28,35 @@ the desired axis is below ``45 deg``, and its linear velocity is below
 """
 
 import pathlib
-from typing import final, override
+from dataclasses import asdict, fields
+from typing import Any, final, override
 
 import jax
 import jax.numpy as jnp
 import mujoco
 import numpy as np
-from ml_collections import config_dict
+from dacite import from_dict
+from ml_collections import ConfigDict, config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
 from mujoco_playground._src import mjx_env
 from mujoco_playground._src.mjx_env import (
     State,  # pylint: disable=g-importing-member
 )
+from tqdm import trange
+from typeguard import check_type, typechecked
+
+from mujoco_elirobots.assets import ASSETS_PATH
+from mujoco_elirobots.playground.flip_coin_ec.config import FlipCoinConfig
+from mujoco_elirobots.playground.flip_coin_ec.scene_builder import build_task
 
 _XML_PATH = pathlib.Path(__file__).parent / "xmls" / "flip_coin_ec.xml"
-_EC63_MESHES_DIR = pathlib.Path(__file__).parents[1] / "assets" / "ec63" / "meshes"
+_EC63_MESHES_DIR = ASSETS_PATH / "ec63" / "meshes"
+
+_ROBOT_XML_PATH = ASSETS_PATH / "ec63" / "ec63_description.urdf"
 
 _COIN_NORMAL_AXIS = jnp.array([1.0, 0.0, 0.0])
 _COIN_DESIRED_AXIS = jnp.array([0.0, 0.0, 1.0])
-
-
-def default_config() -> config_dict.ConfigDict:
-    """Returns the default config for the FlipCoin environment."""
-    config = config_dict.create(
-        ctrl_dt=0.02,
-        sim_dt=0.005,
-        episode_length=50,
-        action_repeat=1,
-        action_scale=0.1,
-        goal_thresh=25e-3,
-        goal_radius=0.1,
-        coin_half_length=5e-3,
-        coin_radius=18e-3,
-        coin_max_height=200e-3,
-        qvel_tolerance=0.2,
-        qvel_penalty=1.0,
-        arm_damping=5.0,
-        reward_config=config_dict.create(
-            scales=config_dict.create(
-                reaching=1.0,
-                grasp=1.0,
-                angle=1.0,
-                place=1.0,
-                static=1.0,
-            ),
-            success_bonus=25.0,
-        ),
-        impl="jax",
-        naconmax=64 * 256,
-        naccdmax=64 * 256,
-        njmax=128,
-    )
-    return config
 
 
 @final
@@ -94,19 +70,20 @@ class FlipCoinEnv(mjx_env.MjxEnv):
 
     def __init__(
         self,
-        config: config_dict.ConfigDict | None = None,
-        config_overrides: dict[str, object] | None = None,
+        config: FlipCoinConfig | None = None,
+        config_overrides: dict[str, str | int | list[Any]] | None = None,
     ):
         if config is None:
-            config = default_config()
-        super().__init__(config, config_overrides)
+            config = FlipCoinConfig()
+        super().__init__(ConfigDict(asdict(config)), config_overrides)
 
         self._action_scale = config.action_scale
-        self._xml_path = _XML_PATH.as_posix()
-        xml = _XML_PATH.read_text()
+
         self._model_assets = self._get_assets()
 
-        mj_model = mujoco.MjModel.from_xml_string(xml, assets=self._model_assets)
+        mj_model = build_task(str(_ROBOT_XML_PATH), task_args=config.scene_config)
+        # mujoco.MjModel.from_xml_string(xml, assets=self._model_assets)
+
         mj_model.opt.timestep = self.sim_dt
         # The MJX JAX backend only supports the semi-implicit integrators, so the
         # fully implicit integrator cannot be used here. Arm joint damping keeps
@@ -119,7 +96,10 @@ class FlipCoinEnv(mjx_env.MjxEnv):
         mj_model.dof_damping[arm_dofs] = config.arm_damping
 
         self._mj_model = mj_model
-        self._mjx_model = mjx.put_model(mj_model, impl=self._config.impl)
+        self._mjx_model = check_type(
+            mjx.put_model(mj_model, impl=self._config.impl),
+            mjx.Model,
+        )
         self._post_init()
 
     @staticmethod
@@ -144,12 +124,16 @@ class FlipCoinEnv(mjx_env.MjxEnv):
         self._lowers = jnp.where(limited, ranges[:, 0], -jnp.inf).astype(jnp.float32)
         self._uppers = jnp.where(limited, ranges[:, 1], jnp.inf).astype(jnp.float32)
 
-        self._coin_body = self._mj_model.body("coin").id
-        self._goal_region_body = self._mj_model.body("goal_region").id
-        self._goal_sphere_body = self._mj_model.body("goal_sphere").id
-        self._tcp_body = self._mj_model.body("robot_claw_tcp_link").id
-        self._finger1_body = self._mj_model.body("robot_claw_finger_1").id
-        self._finger2_body = self._mj_model.body("robot_claw_finger_2").id
+        self._coin_body = check_type(self._mj_model.body("coin").id, int)
+        self._goal_region_body = check_type(self._mj_model.body("goal_region").id, int)
+        self._goal_sphere_body = check_type(self._mj_model.body("goal_sphere").id, int)
+        self._tcp_body = check_type(self._mj_model.body("robot_claw_tcp_link").id, int)
+        self._finger1_body = check_type(
+            self._mj_model.body("robot_claw_finger_1").id, int
+        )
+        self._finger2_body = check_type(
+            self._mj_model.body("robot_claw_finger_2").id, int
+        )
 
         self._coin_qposadr = self._mj_model.jnt_qposadr[
             self._mj_model.body("coin").jntadr[0]
@@ -182,21 +166,25 @@ class FlipCoinEnv(mjx_env.MjxEnv):
 
     @property
     @override
+    @typechecked
     def xml_path(self) -> str:
-        return self._xml_path
+        return ""
 
     @property
     @override
+    @typechecked
     def action_size(self) -> int:
         return self.mjx_model.nu
 
     @property
     @override
+    @typechecked
     def mj_model(self) -> mujoco.MjModel:
         return self._mj_model
 
     @property
     @override
+    @typechecked
     def mjx_model(self) -> mjx.Model:
         return self._mjx_model
 
@@ -206,27 +194,26 @@ class FlipCoinEnv(mjx_env.MjxEnv):
         return self._obs_size
 
     @property
-    def episode_length(self) -> int:
-        return int(self._config.episode_length)
+    @typechecked
+    def config(self) -> FlipCoinConfig:
+        return from_dict(FlipCoinConfig, self._config.to_dict())
 
     @override
     def reset(self, rng: jax.Array) -> State:
         rng, rng_coin, rng_theta, rng_height = jax.random.split(rng, 4)
 
         coin_xy = (jax.random.uniform(rng_coin, (2,), minval=-1.0, maxval=1.0)) * (
-            2.0 * self._config.coin_radius
+            2.0 * self.config.coin_radius
         )
         theta = 2.0 * jnp.pi * jax.random.uniform(rng_theta)
-        goal_xy = coin_xy + 4.0 * self._config.coin_radius * jnp.array(
+        goal_xy = coin_xy + 4.0 * self.config.coin_radius * jnp.array(
             [jnp.sin(theta), jnp.cos(theta)]
         )
         sphere_height = (
-            self._config.coin_half_length
-            + jax.random.uniform(rng_height) * self._config.coin_max_height
+            self.config.coin_half_length
+            + jax.random.uniform(rng_height) * self.config.coin_max_height
             + 200e-3
         )
-
-        print("Random values generated")
 
         init_q = jnp.array(self._init_q, dtype=jnp.float32)
         init_q = init_q.at[self._coin_qposadr : self._coin_qposadr + 2].set(coin_xy)
@@ -238,28 +225,25 @@ class FlipCoinEnv(mjx_env.MjxEnv):
         ].set(goal_xy)
         init_q = init_q.at[self._goal_sphere_qposadr + 2].set(sphere_height)
 
-        print("Before make_data")
-
         data = mjx_env.make_data(
             self._mj_model,
             qpos=init_q,
             qvel=jnp.zeros(self._mjx_model.nv, dtype=jnp.float32),
             ctrl=jnp.array(self._init_ctrl, dtype=jnp.float32),
             impl=self._mjx_model.impl.value,
-            naconmax=self._config.naconmax,
-            naccdmax=self._config.naccdmax,
-            njmax=self._config.njmax,
+            naconmax=self.config.naconmax,
+            naccdmax=self.config.naccdmax,
+            njmax=self.config.njmax,
         )
-        print("After make_data")
 
-        goal_pos = data.qpos[
-            self._goal_sphere_qposadr : self._goal_sphere_qposadr + 3
-        ]
+        goal_pos = data.qpos[self._goal_sphere_qposadr : self._goal_sphere_qposadr + 3]
         info = {"goal_pos": goal_pos}
         metrics = {
             "success": jnp.array(0.0),
             "out_of_bounds": jnp.array(0.0),
-            **{k: jnp.array(0.0) for k in self._config.reward_config.scales.keys()},
+            **{
+                str(k): jnp.array(0.0) for k in fields(self.config.reward_config.scales)
+            },
         }
         obs = self._get_obs(data, info, from_qpos=True)
         reward, done = jnp.zeros(2)
@@ -268,22 +252,23 @@ class FlipCoinEnv(mjx_env.MjxEnv):
     @override
     def step(self, state: State, action: jax.Array) -> State:
         delta = action * self._action_scale
-        ctrl = state.data.ctrl + delta
+        ctrl = check_type(state.data.ctrl + delta, jax.Array)
         ctrl = jnp.clip(ctrl, self._lowers, self._uppers)
 
         data = mjx_env.step(self._mjx_model, state.data, ctrl, self.n_substeps)
 
         raw_rewards = self._get_reward(data, state.info)
+
         rewards = {
-            k: v * self._config.reward_config.scales[k] for k, v in raw_rewards.items()
+            k: v * self.config.reward_config.scales[k] for k, v in raw_rewards.items()
         }
         reward = jnp.clip(sum(rewards.values()), -1e4, 1e4)
 
         coin_pos = data.xpos[self._coin_body]
         coin_vel = data.cvel[self._coin_body, :3]
         obj_to_goal_dist = math.norm(state.info["goal_pos"] - coin_pos)
-        is_obj_placed = obj_to_goal_dist <= self._config.goal_thresh
-        is_obj_static = math.norm(coin_vel) <= self._config.qvel_tolerance
+        is_obj_placed = obj_to_goal_dist <= self.config.goal_thresh
+        is_obj_static = math.norm(coin_vel) <= self.config.qvel_tolerance
         angle_dist = self._coin_angle_deg(data.xquat[self._coin_body])
         is_angle_zero = angle_dist < 45.0
         success = is_obj_placed & is_obj_static & is_angle_zero
@@ -297,7 +282,7 @@ class FlipCoinEnv(mjx_env.MjxEnv):
         )
         done = done.astype(float)
 
-        reward = jnp.where(success, self._config.reward_config.success_bonus, reward)
+        reward = jnp.where(success, self.config.reward_config.success_bonus, reward)
 
         metrics = {
             **state.metrics,
@@ -321,7 +306,7 @@ class FlipCoinEnv(mjx_env.MjxEnv):
         reaching = jnp.exp(-5.0 * math.norm(tcp_pos - coin_pos))
         place = jnp.exp(-5.0 * math.norm(goal_pos - coin_pos))
         static = jnp.exp(
-            -self._config.qvel_penalty * math.norm(data.qvel[self._arm_qveladr])
+            -self.config.qvel_penalty * math.norm(data.qvel[self._arm_qveladr])
         )
         angle = jnp.cos(angle_dist * jnp.pi / 180.0)
 
@@ -331,7 +316,9 @@ class FlipCoinEnv(mjx_env.MjxEnv):
             data.xpos[self._finger1_body],
             data.xpos[self._finger2_body],
         )
-        is_obj_placed = math.norm(goal_pos - coin_pos) <= self._config.goal_thresh
+        is_obj_placed = check_type(
+            math.norm(goal_pos - coin_pos) <= self.config.goal_thresh, jax.Array
+        )
         is_angle_zero = angle_dist < 45.0
 
         return {
@@ -412,24 +399,31 @@ if __name__ == "__main__":
     print("Env reset")
 
     trajectory = [state]
-    while not state.done and len(trajectory) < env.episode_length:
-        print("New step")
-        print(
-            "Note: the first step JIT-compiles the physics and can take a while on CPU; "
-            + "use impl='warp' with a GPU for fast startup.",
-            flush=True,
-        )
+    print(
+        "Note: the first step JIT-compiles the physics and can take a while on CPU; "
+        + "use impl='warp' with a GPU for fast startup.",
+        flush=True,
+    )
+    # while not state.done and len(trajectory) < env.config.episode_length:
+    # for _ in trange(env.config.episode_length):
+    for _ in trange(10):
         rng, rng_action = jax.random.split(rng)
-        action = jax.random.uniform(
-            rng_action, (env.action_size,), minval=-1.0, maxval=1.0
-        )
+        # action = jax.random.uniform(
+        #     rng_action, (env.action_size,), minval=-1.0, maxval=1.0
+        # )
+
+        action = jnp.zeros((env.action_size,))
         state = env.step(state, action)
         trajectory.append(state)
+        if state.done:
+            print("Done!")
+            break
 
     frames = env.render(trajectory, camera="render_camera", height=480, width=640)
     print(f"Rollout of {len(frames)} frames, done={bool(state.done)}")
 
     try:
+        import mediapy as media
         from PIL import Image
 
         Image.fromarray(frames[0]).save(
@@ -439,5 +433,8 @@ if __name__ == "__main__":
             duration=50,
             loop=0,
         )
+
+        media.write_video("robot_run.mp4", frames, fps=25)
+
     except ImportError:
         pass

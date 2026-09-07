@@ -26,6 +26,7 @@ from mujoco._structs import MjModel
 from typeguard import check_type, typechecked
 
 from mujoco_elirobots.builder.model import RobotModelArgs, build_robot
+from mujoco_elirobots.playground.flip_coin_ec.config import FlipCoinSceneConfig
 
 COIN_RED = [1, 0, 0, 1]
 COIN_BLUE = [0, 0, 1, 1]
@@ -34,40 +35,6 @@ TARGET_RED = [194 / 255, 19 / 255, 22 / 255, 1]
 TARGET_WHITE = [1, 1, 1, 1]
 
 GOAL_SPHERE_GREEN = [0, 1, 0, 0.5]
-
-INIT_QPOS = (
-    0.0,
-    4 * np.pi / 8,
-    -5 * np.pi / 8,
-    3 * np.pi / 8,
-    -4 * np.pi / 8,
-    0.0,
-    0.0,
-    0.0,
-)
-
-
-@dataclass
-class FlipCoinArgs:
-    coin_half_length: float = 5e-3
-    coin_radius: float = 18e-3
-    coin_mass: float = 2.6e-2
-    coin_max_height: float = 200e-3
-
-    goal_thresh: float = 25e-3
-    goal_radius: float = 0.1
-
-    robot_init_pos: tuple[float, float, float] = (-0.4, 0.0, 0.0)
-    robot_init_qpos: tuple[float, float, float, float, float, float, float, float] = (
-        INIT_QPOS
-    )
-
-    gripper_kp: float = 1e3
-    gripper_kv: float = 1e2
-
-    initial_coin_pos: tuple[float, float, float] | None = None
-    initial_goal_pos: tuple[float, float, float] | None = None
-    initial_goal_height: float | None = None
 
 
 def _euler_y_quat(angle: float) -> tuple[float, float, float, float]:
@@ -121,7 +88,7 @@ def _look_at_quat(
 
 
 @typechecked
-def build_coin(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
+def build_coin(spec: MjSpec, args: FlipCoinSceneConfig) -> MjsBody:
     half_length = args.coin_half_length
     width = args.coin_radius
 
@@ -159,7 +126,7 @@ def build_coin(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
 
 
 @typechecked
-def build_goal_region(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
+def build_goal_region(spec: MjSpec, args: FlipCoinSceneConfig) -> MjsBody:
     initial_goal_pos = (
         args.initial_goal_pos if args.initial_goal_pos is not None else (0.1, 0.0, 1e-5)
     )
@@ -195,7 +162,7 @@ def build_goal_region(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
 
 
 @typechecked
-def build_goal_sphere(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
+def build_goal_sphere(spec: MjSpec, args: FlipCoinSceneConfig) -> MjsBody:
     initial_goal_pos = (
         args.initial_goal_pos if args.initial_goal_pos is not None else (0.1, 0.0, 1e-5)
     )
@@ -274,7 +241,7 @@ def _add_cameras(spec: MjSpec) -> None:
 
 
 @typechecked
-def _set_robot_init_qpos(robot_spec: MjSpec, args: FlipCoinArgs) -> None:
+def _set_robot_init_qpos(robot_spec: MjSpec, args: FlipCoinSceneConfig) -> None:
     joint_names = [
         "joint1",
         "joint2",
@@ -290,7 +257,7 @@ def _set_robot_init_qpos(robot_spec: MjSpec, args: FlipCoinArgs) -> None:
 
 
 @typechecked
-def _add_gripper_actuators(spec: MjSpec, args: FlipCoinArgs) -> None:
+def _add_gripper_actuators(spec: MjSpec, args: FlipCoinSceneConfig) -> None:
     for name, joint in [
         ("robot_actuator7", "robot_finger_1_joint"),
         ("robot_actuator8", "robot_finger_2_joint"),
@@ -307,12 +274,12 @@ def _add_gripper_actuators(spec: MjSpec, args: FlipCoinArgs) -> None:
 def build_task_spec(
     robot_filename: str,
     robot_model_args: RobotModelArgs | None = None,
-    task_args: FlipCoinArgs | None = None,
+    task_args: FlipCoinSceneConfig | None = None,
 ) -> MjSpec:
     if robot_model_args is None:
         robot_model_args = RobotModelArgs()
     if task_args is None:
-        task_args = FlipCoinArgs()
+        task_args = FlipCoinSceneConfig()
 
     scene_spec = mujoco.MjSpec()
     scene_spec.compiler.degree = False
@@ -339,7 +306,7 @@ def build_task_spec(
 def build_task(
     robot_filename: str,
     robot_model_args: RobotModelArgs | None = None,
-    task_args: FlipCoinArgs | None = None,
+    task_args: FlipCoinSceneConfig | None = None,
 ) -> MjModel:
     return check_type(
         build_task_spec(robot_filename, robot_model_args, task_args).compile(), MjModel
