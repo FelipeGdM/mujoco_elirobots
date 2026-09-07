@@ -1,9 +1,9 @@
 """MuJoCo scene builder for the FlipCoin-v1 task, converted from ManiSkill.
 
 Recreates the scene of ``maniskill_elirobots.tasks.flip_coin_ec`` using MuJoCo's
-procedural API (``MjSpec``): an EC63 robot mounted on a table, a two-sided coin
-to be flipped, a bullseye goal region on the table and a floating goal sphere
-marking where the flipped coin must end up.
+procedural API (``MjSpec``): an EC63 robot on a ground plane, a two-sided coin
+to be flipped, a bullseye goal region and a floating goal sphere marking where
+the flipped coin must end up.
 
 ManiSkill element -> MuJoCo equivalent
     coin (two-color peg)      -> free body, box of half size [length, width,
@@ -12,7 +12,7 @@ ManiSkill element -> MuJoCo equivalent
                                  thin cylinders, collision disabled
     goal_sphere (transparent) -> free body (gravcomp=1), transparent sphere,
                                  collision disabled
-    table (TableSceneBuilder) -> static box geom + ground plane
+    ground plane              -> static plane geom at z=0
     agent (EC63)              -> URDF robot, gravity-compensated arm, position
                                  actuators for the arm and gripper
 """
@@ -35,15 +35,12 @@ TARGET_WHITE = [1, 1, 1, 1]
 
 GOAL_SPHERE_GREEN = [0, 1, 0, 0.5]
 
-TABLE_RGBA = [0.55, 0.35, 0.2, 1]
-FLOOR_RGBA = [0.4, 0.4, 0.4, 1]
-
 INIT_QPOS = (
     0.0,
-    -6 * np.pi / 8,
-    5 * np.pi / 8,
-    -3 * np.pi / 8,
     4 * np.pi / 8,
+    -5 * np.pi / 8,
+    3 * np.pi / 8,
+    -4 * np.pi / 8,
     0.0,
     0.0,
     0.0,
@@ -60,13 +57,10 @@ class FlipCoinArgs:
     goal_thresh: float = 25e-3
     goal_radius: float = 0.1
 
-    table_length: float = 2.418
-    table_width: float = 1.209
-    table_height: float = 0.9196429
-    table_center_xy: tuple[float, float] = (-0.12, 0.0)
-
     robot_init_pos: tuple[float, float, float] = (-0.4, 0.0, 0.0)
-    robot_init_qpos: tuple[float, float, float, float, float, float, float, float] = INIT_QPOS
+    robot_init_qpos: tuple[float, float, float, float, float, float, float, float] = (
+        INIT_QPOS
+    )
 
     gripper_kp: float = 1e3
     gripper_kv: float = 1e2
@@ -80,7 +74,9 @@ def _euler_y_quat(angle: float) -> tuple[float, float, float, float]:
     return (np.cos(angle / 2), 0.0, np.sin(angle / 2), 0.0)
 
 
-def _look_at_quat(eye: np.ndarray, target: np.ndarray) -> tuple[float, float, float, float]:
+def _look_at_quat(
+    eye: np.ndarray, target: np.ndarray
+) -> tuple[float, float, float, float]:
     eye = np.asarray(eye, dtype=float)
     target = np.asarray(target, dtype=float)
 
@@ -129,7 +125,11 @@ def build_coin(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
     half_length = args.coin_half_length
     width = args.coin_radius
 
-    initial_coin_pos = args.initial_coin_pos if args.initial_coin_pos is not None else (0.0, 0.0, 2 * half_length)
+    initial_coin_pos = (
+        args.initial_coin_pos
+        if args.initial_coin_pos is not None
+        else (0.0, 0.0, 2 * half_length)
+    )
 
     coin = spec.worldbody.add_body(
         name="coin",
@@ -160,18 +160,25 @@ def build_coin(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
 
 @typechecked
 def build_goal_region(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
-    initial_goal_pos = args.initial_goal_pos if args.initial_goal_pos is not None else (0.1, 0.0, 1e-5)
+    initial_goal_pos = (
+        args.initial_goal_pos if args.initial_goal_pos is not None else (0.1, 0.0, 1e-5)
+    )
 
     region = spec.worldbody.add_body(
         name="goal_region",
         pos=initial_goal_pos,
-        quat=_euler_y_quat(np.pi / 2),
     )
     _ = region.add_freejoint()
     region.gravcomp = 1.0
 
     thickness = 1e-5
-    radii = [args.goal_radius, args.goal_radius * 4 / 5, args.goal_radius * 3 / 5, args.goal_radius * 2 / 5, args.goal_radius / 5]
+    radii = [
+        args.goal_radius,
+        args.goal_radius * 4 / 5,
+        args.goal_radius * 3 / 5,
+        args.goal_radius * 2 / 5,
+        args.goal_radius / 5,
+    ]
     colors = [TARGET_RED, TARGET_WHITE, TARGET_RED, TARGET_WHITE, TARGET_RED]
 
     for i, (radius, color) in enumerate(zip(radii, colors)):
@@ -189,7 +196,9 @@ def build_goal_region(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
 
 @typechecked
 def build_goal_sphere(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
-    initial_goal_pos = args.initial_goal_pos if args.initial_goal_pos is not None else (0.1, 0.0, 1e-5)
+    initial_goal_pos = (
+        args.initial_goal_pos if args.initial_goal_pos is not None else (0.1, 0.0, 1e-5)
+    )
     initial_goal_height = (
         args.initial_goal_height
         if args.initial_goal_height is not None
@@ -216,54 +225,76 @@ def build_goal_sphere(spec: MjSpec, args: FlipCoinArgs) -> MjsBody:
 
 
 @typechecked
-def build_table(spec: MjSpec, args: FlipCoinArgs) -> None:
-    cx, cy = args.table_center_xy
-
-    _ = spec.worldbody.add_geom(
-        name="table",
-        type=mujoco.mjtGeom.mjGEOM_BOX,
-        size=[args.table_width / 2, args.table_length / 2, args.table_height / 2],
-        pos=[cx, cy, -args.table_height / 2],
-        rgba=TABLE_RGBA,
+def build_floor(spec: MjSpec) -> None:
+    _ = spec.add_texture(
+        name="texplane",
+        type=mujoco.mjtTexture.mjTEXTURE_2D,
+        builtin=mujoco.mjtBuiltin.mjBUILTIN_CHECKER,
+        rgb1=[0.2, 0.3, 0.4],
+        rgb2=[0.3, 0.4, 0.5],
+        width=512,
+        height=512,
     )
-
+    _ = spec.add_material(
+        name="matplane",
+        textures=["", "texplane"],
+        texrepeat=[50, 50],
+        reflectance=0.3,
+    )
     _ = spec.worldbody.add_geom(
         name="floor",
         type=mujoco.mjtGeom.mjGEOM_PLANE,
         size=[20, 20, 0.1],
-        pos=[0, 0, -args.table_height],
-        rgba=FLOOR_RGBA,
+        pos=[0, 0, 0],
+        material="matplane",
     )
 
 
 @typechecked
 def _add_cameras(spec: MjSpec) -> None:
+    # NOTE: this MuJoCo binding mislabels mjtCamera: value 2 ("mjCAMERA_FIXED")
+    # is actually mjCAMERA_TRACKING_COM, i.e. the camera follows the model's
+    # center of mass and therefore moves. Value 0 ("mjCAMERA_FREE") is the
+    # mode that renders as a static camera placed at pos/quat.
+    static_mode = mujoco.mjtCamera.mjCAMERA_FREE
     _ = spec.worldbody.add_camera(
         name="base_camera",
-        mode=mujoco.mjtCamera.mjCAMERA_FIXED,
+        mode=static_mode,
         pos=[0.3, 0, 0.6],
         quat=_look_at_quat(np.array([0.3, 0, 0.6]), np.array([-0.1, 0, 0.1])),
         fovy=np.pi / 2,
     )
     _ = spec.worldbody.add_camera(
         name="render_camera",
-        mode=mujoco.mjtCamera.mjCAMERA_FIXED,
-        pos=[0.15, 0, 0.5],
-        quat=_look_at_quat(np.array([0.15, 0, 0.5]), np.array([-0.2, 0, 0.2])),
-        fovy=1.5,
+        mode=static_mode,
+        pos=[0.065, -1.4, 1.4],
+        xyaxes=[1.000, -0.000, 0.000, 0.000, 0.707, 0.707],
+        fovy=30.0,
     )
 
 
 @typechecked
 def _set_robot_init_qpos(robot_spec: MjSpec, args: FlipCoinArgs) -> None:
-    joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "finger_1_joint", "finger_2_joint"]
+    joint_names = [
+        "joint1",
+        "joint2",
+        "joint3",
+        "joint4",
+        "joint5",
+        "joint6",
+        "finger_1_joint",
+        "finger_2_joint",
+    ]
     for name, value in zip(joint_names, args.robot_init_qpos):
         robot_spec.joint(name).ref = value
 
 
 @typechecked
 def _add_gripper_actuators(spec: MjSpec, args: FlipCoinArgs) -> None:
-    for name, joint in [("robot_actuator7", "robot_finger_1_joint"), ("robot_actuator8", "robot_finger_2_joint")]:
+    for name, joint in [
+        ("robot_actuator7", "robot_finger_1_joint"),
+        ("robot_actuator8", "robot_finger_2_joint"),
+    ]:
         actuator = spec.add_actuator(
             name=name,
             target=joint,
@@ -273,11 +304,11 @@ def _add_gripper_actuators(spec: MjSpec, args: FlipCoinArgs) -> None:
 
 
 @typechecked
-def build_task(
+def build_task_spec(
     robot_filename: str,
     robot_model_args: RobotModelArgs | None = None,
     task_args: FlipCoinArgs | None = None,
-) -> MjModel:
+) -> MjSpec:
     if robot_model_args is None:
         robot_model_args = RobotModelArgs()
     if task_args is None:
@@ -287,7 +318,7 @@ def build_task(
     scene_spec.compiler.degree = False
     scene_spec.compiler.balanceinertia = True
 
-    build_table(scene_spec, task_args)
+    build_floor(scene_spec)
     _add_cameras(scene_spec)
 
     robot_spec = build_robot(robot_filename, robot_model_args)
@@ -301,4 +332,15 @@ def build_task(
     _ = build_goal_region(scene_spec, task_args)
     _ = build_goal_sphere(scene_spec, task_args)
 
-    return check_type(scene_spec.compile(), MjModel)
+    return scene_spec
+
+
+@typechecked
+def build_task(
+    robot_filename: str,
+    robot_model_args: RobotModelArgs | None = None,
+    task_args: FlipCoinArgs | None = None,
+) -> MjModel:
+    return check_type(
+        build_task_spec(robot_filename, robot_model_args, task_args).compile(), MjModel
+    )

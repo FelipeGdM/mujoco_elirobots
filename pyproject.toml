@@ -6,8 +6,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "beartype>=0.22.9",
+    "ml-collections>=1.1.0",
     "mujoco>=3.9.0",
     "mujoco-mjx>=3.9.0",
+    "mujoco-warp>=3.11.0",
+    "playground>=0.1.0",
     "pybind11-stubgen>=2.5.5",
     "typeguard>=4.5.2",
 ]
@@ -22,6 +25,11 @@ config-settings = { editable_mode = "compat" }
 [tool.pyright]
 stubPath = "typings"
 reportUnknownMemberType = false
+reportAny = false
+reportExplicitAny = false
 
 [tool.setuptools.packages.find]
 exclude = ["typings*"]
+
+[dependency-groups]
+dev = ["basedpyright>=1.39.10"]
